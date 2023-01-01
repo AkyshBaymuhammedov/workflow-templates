@@ -21,20 +21,13 @@ env:
   HELM_VERSION_TO_INSTALL: 3.9.0
 
 jobs:
-  read-version:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - id: export-version
-        run: export RELEASE_VERSION=$(cat VERSION)
-    outputs:
-      release_version: ${{ steps.export-version.outputs.release_version }}
-
   build:
-    needs: read-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Read version
+        run: echo "RELEASE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
 
       - name: Login ACR
         uses: Azure/docker-login@v1
@@ -51,14 +44,16 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.DOCKER_TAG }}:${{ needs.read-version.outputs.release_version }} , ${{ env.DOCKER_TAG }}:${{ github.sha }} , ${{ env.DOCKER_TAG }}:latest
+          tags: ${{ env.DOCKER_TAG }}:${{ env.RELEASE_VERSION }} , ${{ env.DOCKER_TAG }}:${{ github.sha }} , ${{ env.DOCKER_TAG }}:latest
 
   publish:
-    needs: [read-version, build]
+    needs: build
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
+
+      - name: Read version
+        run: echo "RELEASE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
 
       - name: Helm tool installer
         uses: Azure/setup-helm@v3
@@ -69,15 +64,14 @@ jobs:
         run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
 
       - name: Helm package
-        run: helm package ${GITHUB_WORKSPACE}/helm --app-version ${{ needs.read-version.outputs.release_version }} --version ${{ needs.read-version.outputs.release_version }}
+        run: helm package ${GITHUB_WORKSPACE}/helm --app-version ${{ env.RELEASE_VERSION }} --version ${{ env.RELEASE_VERSION }}
 
       - name: Helm push
-        run: helm push ${GITHUB_WORKSPACE}/${{ inputs.REPO_NAME }}-helm-${{ needs.read-version.outputs.release_version }}.tgz oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm
+        run: helm push ${GITHUB_WORKSPACE}/${{ inputs.REPO_NAME }}-helm-${{ env.RELEASE_VERSION }}.tgz oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm
 
   deploy:
-    needs: [read-version, publish]
+    needs: publish
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
@@ -95,4 +89,4 @@ jobs:
         run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
 
       - name: Helm install
-        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ needs.read-version.outputs.release_version }}
+        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ env.RELEASE_VERSION }}
