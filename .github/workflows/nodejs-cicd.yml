@@ -3,9 +3,6 @@ name: CI/CD pipeline
 on:
   workflow_call:
     inputs:
-      RELEASE_VERSION:
-        required: true
-        type: string
       REPO_NAME:
         required: true
         type: string
@@ -24,9 +21,17 @@ env:
   HELM_VERSION_TO_INSTALL: 3.9.0
 
 jobs:
-  build:
+  read-version:
     runs-on: ubuntu-latest
+    steps:
+      - id: export-version
+        run: export RELEASE_VERSION=$(cat VERSION)
+    outputs:
+      release_version: ${{ steps.export-version.outputs.release_version }}
 
+  build:
+    needs: read-version
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
@@ -45,10 +50,10 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.DOCKER_TAG }}:${{ inputs.RELEASE_VERSION }} , ${{ env.DOCKER_TAG }}:${{ github.sha }} , ${{ env.DOCKER_TAG }}:latest
+          tags: ${{ env.DOCKER_TAG }}:${{ needs.read-version.outputs.release_version }} , ${{ env.DOCKER_TAG }}:${{ github.sha }} , ${{ env.DOCKER_TAG }}:latest
 
   publish:
-    needs: build
+    needs: [read-version, build]
     runs-on: ubuntu-latest
 
     steps:
@@ -63,13 +68,13 @@ jobs:
         run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
 
       - name: Helm package
-        run: helm package ${GITHUB_WORKSPACE}/helm --app-version ${{ inputs.RELEASE_VERSION }} --version ${{ inputs.RELEASE_VERSION }}
+        run: helm package ${GITHUB_WORKSPACE}/helm --app-version ${{ needs.read-version.outputs.release_version }} --version ${{ needs.read-version.outputs.release_version }}
 
       - name: Helm push
-        run: helm push ${GITHUB_WORKSPACE}/${{ inputs.REPO_NAME }}-helm-${{ inputs.RELEASE_VERSION }}.tgz oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm
+        run: helm push ${GITHUB_WORKSPACE}/${{ inputs.REPO_NAME }}-helm-${{ needs.read-version.outputs.release_version }}.tgz oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm
 
   deploy:
-    needs: publish
+    needs: [read-version, publish]
     runs-on: ubuntu-latest
 
     steps:
@@ -89,4 +94,4 @@ jobs:
         run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
 
       - name: Helm install
-        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ inputs.RELEASE_VERSION }}
+        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ needs.read-version.outputs.release_version }}
