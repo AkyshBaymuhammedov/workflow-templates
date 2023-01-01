@@ -1,0 +1,92 @@
+name: CI/CD pipeline
+
+on:
+  workflow_call:
+    inputs:
+      RELEASE_VERSION:
+        required: true
+        type: string
+      REPO_NAME:
+        required: true
+        type: string
+
+    secrets:
+      ACR_USERNAME:
+        required: true
+      ACR_PASSWORD:
+        required: true
+      ACR_REGISTRY:
+        required: true
+      KUBECONFIG:
+        required: true
+env:
+  HELM_EXPERIMENTAL_OCI: 1
+  HELM_VERSION_TO_INSTALL: 3.9.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Login ACR
+        uses: Azure/docker-login@v1
+        with:
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+          login-server: ${{ secrets.ACR_REGISTRY }}.azurecr.io
+
+      - name: Prepare Docker tag
+        run: echo "DOCKER_TAG=${{ secrets.ACR_REGISTRY }}.azurecr.io/${{ inputs.REPO_NAME }}" >> $GITHUB_ENV
+
+      - name: Docker build and push
+        uses: docker/build-push-action@v3.2.0
+        with:
+          context: .
+          push: true
+          tags: ${{ env.DOCKER_TAG }}:${{ inputs.RELEASE_VERSION }} , ${{ env.DOCKER_TAG }}:${{ github.sha }} , ${{ env.DOCKER_TAG }}:latest
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Helm tool installer
+        uses: Azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION_TO_INSTALL }}
+
+      - name: Helm login
+        run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
+
+      - name: Helm package
+        run: helm package ${GITHUB_WORKSPACE}/helm --app-version ${{ inputs.RELEASE_VERSION }} --version ${{ inputs.RELEASE_VERSION }}
+
+      - name: Helm push
+        run: helm push ${GITHUB_WORKSPACE}/${{ inputs.REPO_NAME }}-helm-${{ inputs.RELEASE_VERSION }}.tgz oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Kubernetes Set Context
+        uses: Azure/k8s-set-context@v3.0
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Helm tool installer
+        uses: Azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION_TO_INSTALL }}
+
+      - name: Helm login
+        run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
+
+      - name: Helm install
+        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ inputs.RELEASE_VERSION }}
