@@ -24,6 +24,7 @@ jobs:
   read-version:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - id: export-version
         run: export RELEASE_VERSION=$(cat VERSION)
     outputs:
