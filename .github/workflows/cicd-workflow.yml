@@ -6,6 +6,9 @@ on:
       REPO_NAME:
         required: true
         type: string
+      NAMESPACE:
+        type: string
+        default: 'default'
 
     secrets:
       ACR_USERNAME:
@@ -95,4 +98,4 @@ jobs:
         run: helm registry login ${{ secrets.ACR_REGISTRY }}.azurecr.io --username ${{ secrets.ACR_USERNAME }} --password ${{ secrets.ACR_PASSWORD }}
 
       - name: Helm install
-        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ env.RELEASE_VERSION }}
+        run: helm upgrade --install ${{ inputs.REPO_NAME }} oci://${{ secrets.ACR_REGISTRY }}.azurecr.io/helm/${{ inputs.REPO_NAME }}-helm --version ${{ env.RELEASE_VERSION }} -n ${{ inputs.NAMESPACE }}
