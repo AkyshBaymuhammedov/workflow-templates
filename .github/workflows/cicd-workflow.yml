@@ -17,7 +17,7 @@ on:
         required: true
       ACR_REGISTRY:
         required: true
-      KUBECONFIG:
+      AZURE_CREDENTIALS:
         required: true
 env:
   HELM_EXPERIMENTAL_OCI: 1
@@ -87,7 +87,7 @@ jobs:
           creds: '${{ secrets.AZURE_CREDENTIALS }}'
 
       - name: Get kubeconfig from Azure Key Vault
-        run: | 
+        run: |
           az keyvault secret show --vault-name ${{ secrets.KEY_VAULT }} --name kubeconfig-westeurope --query value -o tsv | base64 --decode > kubeconfig-westeurope.json && \
           echo "KUBECONFIG=$(cat kubeconfig-westeurope.json | tr -d " \t\n\r")" >> $GITHUB_ENV
 
