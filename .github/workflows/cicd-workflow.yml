@@ -81,13 +81,23 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Read version
-        run: echo "RELEASE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
+      - name: Log in with Azure
+        uses: azure/login@v1
+        with:
+          creds: '${{ secrets.AZURE_CREDENTIALS }}'
+
+      - name: Get kubeconfig from Azure Key Vault
+        run: | 
+          az keyvault secret show --vault-name ${{ secrets.KEY_VAULT }} --name kubeconfig-westeurope --query value -o tsv | base64 --decode > kubeconfig-westeurope.json && \
+          echo "KUBECONFIG=$(cat kubeconfig-westeurope.json | tr -d " \t\n\r")" >> $GITHUB_ENV
 
       - name: Kubernetes Set Context
         uses: Azure/k8s-set-context@v3.0
         with:
-          kubeconfig: ${{ secrets.KUBECONFIG }}
+          kubeconfig: ${{ env.KUBECONFIG }}
+
+      - name: Read version
+        run: echo "RELEASE_VERSION=$(cat VERSION)" >> $GITHUB_ENV
 
       - name: Helm tool installer
         uses: Azure/setup-helm@v3
