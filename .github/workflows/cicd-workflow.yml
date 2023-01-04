@@ -19,6 +19,8 @@ on:
         required: true
       AZURE_CREDENTIALS:
         required: true
+      KEY_VAULT:
+        required: true
 env:
   HELM_EXPERIMENTAL_OCI: 1
   HELM_VERSION_TO_INSTALL: 3.9.0
